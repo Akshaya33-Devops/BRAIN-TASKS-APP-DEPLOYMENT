@@ -1,549 +1,195 @@
-# BRAIN-TASKS-APP-DEPLOYMENT
+# Brain Tasks App – Deployment on AWS (Docker · ECR · EKS · GitHub Actions · CloudWatch)
 
-## Application Deployment using Docker, AWS ECR, Amazon EKS, CodeBuild, CodePipeline and CloudWatch
+End-to-end deployment of a React/Vite single-page application ("Brain Tasks") using containerization, Kubernetes and AWS DevOps services.
 
-A complete DevOps deployment project for a React/Vite application using Docker, Kubernetes and AWS DevOps services.
+The app is packaged into a Docker image, pushed to Amazon ECR by a GitHub Actions workflow, deployed to an Amazon EKS cluster, exposed to the internet through a Kubernetes LoadBalancer service, and monitored with Amazon CloudWatch.
 
-The application is containerized using Docker and served through NGINX. The Docker image is stored in Amazon ECR and deployed to an Amazon EKS cluster. AWS CodeBuild and AWS CodePipeline automate the CI/CD workflow, while Amazon CloudWatch provides centralized logging and monitoring.
+- **AWS Region:** `ap-south-1` (Asia Pacific – Mumbai)
+- **Prepared by:** M. Akshaya
+- **Application source:** https://github.com/Vennilavanguvi/Brain-Tasks-App
 
-## Project Overview
+---
 
-This project demonstrates an end-to-end application deployment workflow:
+## Architecture
 
-```text
-GitHub
-   |
-   v
-AWS CodePipeline
-   |
-   v
-AWS CodeBuild
-   |
-   v
-Docker Image
-   |
-   v
-Amazon ECR
-   |
-   v
-Amazon EKS
-   |
-   v
-Kubernetes Service
-   |
-   v
-AWS Load Balancer
-   |
-   v
-End User
+```
+GitHub Repository
+       │
+       ▼
+GitHub Actions (build Docker image)
+       │  push image
+       ▼
+Amazon ECR (brain-tasks-app)
+       │  pull image
+       ▼
+Amazon EKS Cluster (brain-tasks-cluster)
+       │                         ┆ logs / metrics
+       ▼                         ▼
+Kubernetes Deployment      Amazon CloudWatch
+(brain-tasks-app, 2 replicas)   (Logs, Container Insights)
+       │  ◀── scales ──▶ Horizontal Pod Autoscaler (2–5, CPU 70%)
+       ▼
+Kubernetes Service (LoadBalancer)
+       │
+       ▼
+AWS Elastic Load Balancer  ──HTTP──▶  End User / Browser
 ```
 
-CloudWatch is used for monitoring and centralized logging.
+## Tech Stack
 
-## Technologies Used
+| Area | Tool |
+|---|---|
+| Application | React + Vite (pre-built `dist/`) |
+| Web server | NGINX (alpine) |
+| Containerization | Docker |
+| Container registry | Amazon ECR |
+| Orchestration | Amazon EKS (Kubernetes 1.34) |
+| CI/CD | GitHub Actions |
+| Monitoring / logging | Amazon CloudWatch (Container Insights, Fluent Bit) |
+| Scaling | Kubernetes Horizontal Pod Autoscaler |
 
-- React / Vite
-- Docker
-- NGINX
-- Kubernetes
-- Amazon EKS
-- Amazon ECR
-- AWS CodeBuild
-- AWS CodePipeline
-- Amazon CloudWatch
-- AWS CLI
-- kubectl
-- GitHub
-- Horizontal Pod Autoscaler (HPA)
+## Repository Structure
 
-## AWS Region
-
-```text
-ap-south-1
-Asia Pacific (Mumbai)
 ```
-
-## Application Source
-
-The original application source is maintained separately:
-
-https://github.com/Vennilavanguvi/Brain-Tasks-App
-
-The application is provided as a pre-built React/Vite production distribution.
-
-The deployment repository contains the `dist/` directory instead of building the React application from source.
-
-## Deployment Repository
-
-GitHub Repository:
-
-https://github.com/Akshaya33-Devops/BRAIN-TASKS-APP-DEPLOYMENT
-
-Repository structure:
-
-```text
 BRAIN-TASKS-APP-DEPLOYMENT/
-│
-├── dist/
+├── .github/workflows/   # GitHub Actions CI/CD workflow
+├── dist/                # Pre-built React/Vite production build
+│   ├── assets/
+│   ├── index.html
+│   └── vite.svg
 ├── Dockerfile
-├── deployment.yaml
-├── service.yaml
-├── buildspec.yml
-├── README.md
-└── ...
+├── deployment.yaml      # Kubernetes Deployment
+├── service.yaml         # Kubernetes LoadBalancer Service
+└── README.md
 ```
 
-## Dockerization
+> The application is supplied as a pre-built production distribution, so there is no `package.json` and no build step for the app itself.
 
-The application is served using NGINX.
-
-### Dockerfile
+## Dockerfile
 
 ```dockerfile
 FROM nginx:alpine
-
 COPY dist /usr/share/nginx/html
-
 EXPOSE 80
-
 CMD ["nginx", "-g", "daemon off;"]
 ```
 
-The `dist/` directory contains the production React/Vite files.
+NGINX listens on port **80** inside the container.
 
-NGINX serves the application on port `80` inside the container.
-
-## Build Docker Image
-
-The Docker image was created using:
+## Run Locally with Docker
 
 ```bash
+# Build the image
 docker build -t brain-tasks-app:latest .
-```
 
-Image:
-
-```text
-brain-tasks-app:latest
-```
-
-## Run Locally
-
-The application was tested locally using:
-
-```bash
+# Run the container (host 3000 -> container 80)
 docker run -d --name brain-tasks-app-container -p 3000:80 brain-tasks-app:latest
 ```
 
-Port mapping:
+Open http://localhost:3000
 
-```text
-localhost:3000
-      |
-      v
-Container:80
-      |
-      v
-NGINX
-      |
-      v
-React Application
-```
+## Push the Image to Amazon ECR
 
-Application URL:
-
-```text
-http://localhost:3000
-```
-
-## Amazon ECR
-
-The Docker image was stored in Amazon Elastic Container Registry.
-
-ECR Repository:
-
-```text
-brain-tasks-app
-```
-
-Image:
-
-```text
-brain-tasks-app:latest
-```
-
-Image flow:
-
-```text
-Local Docker Image
-        |
-        v
-Amazon ECR
-        |
-        v
-brain-tasks-app:latest
-```
-
-## Amazon EKS
-
-The application was deployed to an Amazon EKS cluster.
-
-Cluster name:
-
-```text
-brain-tasks-cluster
-```
-
-Region:
-
-```text
-ap-south-1
-```
-
-The Kubernetes deployment pulls the application Docker image from Amazon ECR.
-
-Architecture:
-
-```text
-Amazon EKS Cluster
-        |
-        v
-Kubernetes Deployment
-        |
-        v
-Application Pods
-        |
-        v
-Docker Container
-        |
-        v
-React Application
-```
-
-## Kubernetes Deployment
-
-The project uses Kubernetes manifests to manage the application.
-
-### Deployment
-
-`deployment.yaml` is responsible for:
-
-- Using the Docker image from ECR
-- Creating application pods
-- Maintaining the desired number of replicas
-- Restarting failed containers
-
-### Service
-
-`service.yaml` exposes the application using a Kubernetes `LoadBalancer` service.
-
-Traffic flow:
-
-```text
-Internet
-   |
-   v
-AWS Load Balancer
-   |
-   v
-Kubernetes Service
-   |
-   v
-Application Pod
-   |
-   v
-React Application
-```
-
-## Horizontal Pod Autoscaler
-
-A Horizontal Pod Autoscaler was configured for the application.
+The workflow does this automatically, but the manual flow is:
 
 ```bash
+aws ecr get-login-password --region ap-south-1 \
+  | docker login --username AWS --password-stdin <AWS_ACCOUNT_ID>.dkr.ecr.ap-south-1.amazonaws.com
+
+docker tag brain-tasks-app:latest <AWS_ACCOUNT_ID>.dkr.ecr.ap-south-1.amazonaws.com/brain-tasks-app:latest
+docker push <AWS_ACCOUNT_ID>.dkr.ecr.ap-south-1.amazonaws.com/brain-tasks-app:latest
+```
+
+Replace `<AWS_ACCOUNT_ID>` with your own account ID.
+
+## Deploy to Amazon EKS
+
+```bash
+# Connect kubectl to the cluster
+aws eks update-kubeconfig --region ap-south-1 --name brain-tasks-cluster
+
+# Apply the manifests
+kubectl apply -f deployment.yaml
+kubectl apply -f service.yaml
+
+# Autoscaling: 2–5 replicas at 70% CPU
 kubectl autoscale deployment brain-tasks-app --cpu-percent=70 --min=2 --max=5
 ```
 
-Configuration:
-
-```text
-Minimum replicas : 2
-Maximum replicas : 5
-CPU target       : 70%
-```
-
-The HPA allows the application to automatically adjust the number of pods based on CPU utilization.
-
-## AWS CodeBuild
-
-AWS CodeBuild automates the Docker image build and ECR push process.
-
-Build stages:
-
-```text
-Get Source Code
-      |
-      v
-Build Docker Image
-      |
-      v
-Authenticate with ECR
-      |
-      v
-Push Docker Image to ECR
-```
-
-CodeBuild project:
-
-```text
-brain-tasks-codebuild
-```
-
-The project uses GitHub as the source repository.
-
-## AWS CodePipeline
-
-AWS CodePipeline automates the CI/CD workflow.
-
-Pipeline flow:
-
-```text
-GitHub
-   |
-   v
-Source Stage
-   |
-   v
-AWS CodeBuild
-   |
-   v
-Build Docker Image
-   |
-   v
-Push Image to ECR
-   |
-   v
-Deploy to Amazon EKS
-```
-
-When changes are pushed to the GitHub repository, the pipeline can trigger the deployment workflow.
-
-## Amazon CloudWatch
-
-Amazon CloudWatch is used for monitoring and centralized logging.
-
-Monitoring flow:
-
-```text
-CodeBuild  ---> CloudWatch Logs
-
-CodePipeline ---> Pipeline Execution Information
-
-EKS / Application ---> CloudWatch
-```
-
-Container Insights log groups used by the project include:
-
-```text
-/aws/containerinsights/brain-tasks-cluster/application
-
-/aws/containerinsights/brain-tasks-cluster/dataplane
-
-/aws/containerinsights/brain-tasks-cluster/host
-```
-
-## Useful Kubernetes Commands
-
-Update the kubeconfig:
-
-```bash
-aws eks update-kubeconfig --region ap-south-1 --name brain-tasks-cluster
-```
-
-Check deployments:
-
-```bash
-kubectl get deployment
-```
-
-Check pods:
-
-```bash
-kubectl get pods -o wide
-```
-
-Check services:
-
-```bash
-kubectl get service
-```
-
-Check HPA:
-
-```bash
-kubectl get hpa
-```
-
-Check resource usage:
-
-```bash
-kubectl top pods
-```
-
-Check complete application status:
+### Verify
 
 ```bash
 kubectl get deployment,service,pods -o wide
-```
-
-## Troubleshooting
-
-### EKS Cluster Access
-
-If the local system is not connected to the EKS cluster:
-
-```bash
-aws eks update-kubeconfig --region ap-south-1 --name brain-tasks-cluster
-```
-
-Then verify:
-
-```bash
-kubectl get pods
-```
-
-### Pods Not Running
-
-Check deployment and pods:
-
-```bash
-kubectl get deployment,pods -o wide
-```
-
-### Load Balancer Verification
-
-Check the service:
-
-```bash
-kubectl get service
-```
-
-The application should have an external Load Balancer address.
-
-### CloudWatch Logs
-
-Check CloudWatch log groups:
-
-```bash
-aws logs describe-log-groups --region ap-south-1 --query "logGroups[].logGroupName" --output table
-```
-
-Check application log streams:
-
-```bash
-aws logs describe-log-streams --log-group-name "/aws/containerinsights/brain-tasks-cluster/application" --region ap-south-1
-```
-
-### HPA Verification
-
-Check the HPA:
-
-```bash
 kubectl get hpa
-```
-
-Check CPU and memory metrics:
-
-```bash
 kubectl top pods
 ```
 
-## Project Completion Status
+Get the external endpoint from `kubectl get service` (the `EXTERNAL-IP` column of `brain-tasks-service`), then test it:
 
-The following project stages were completed and verified:
-
-- Application source cloned
-- Production `dist/` build verified
-- Dockerfile created
-- Docker image built
-- Docker container tested locally
-- Application accessed through `localhost:3000`
-- Docker image pushed to Amazon ECR
-- Amazon EKS cluster created and activated
-- Kubernetes Deployment configured
-- Kubernetes Service configured
-- Application exposed through AWS Load Balancer
-- AWS CodeBuild configured
-- AWS CodePipeline configured
-- CloudWatch Container Insights configured
-- Application logs verified
-- Horizontal Pod Autoscaler configured
-- Final application deployment verified
-
-## Final Architecture
-
-```text
-                    GitHub
-                       |
-                       v
-               AWS CodePipeline
-                       |
-                       v
-                 AWS CodeBuild
-                       |
-                       v
-              Docker Image Build
-                       |
-                       v
-                  Amazon ECR
-                       |
-                       v
-                Amazon EKS
-                       |
-              Kubernetes Deployment
-                       |
-                       v
-                 Application Pods
-                       |
-                       v
-              Kubernetes Service
-                       |
-                       v
-              AWS Load Balancer
-                       |
-                       v
-                    User
-
-                       ^
-                       |
-                Amazon CloudWatch
-             Logs / Monitoring / Metrics
+```powershell
+Invoke-WebRequest http://<LOAD-BALANCER-DNS>
 ```
 
-## Project Outcome
+A `200 OK` response confirms the app is reachable.
 
-The Brain Tasks React/Vite application was successfully containerized using Docker and NGINX, stored in Amazon ECR, and deployed to Amazon EKS.
+## CI/CD – GitHub Actions
 
-AWS CodeBuild and AWS CodePipeline were used to automate the CI/CD workflow, while Amazon CloudWatch provided centralized monitoring and logging.
+On each run the workflow:
 
-The deployment was verified using the AWS Console, AWS CLI and Kubernetes commands.
+1. Checks out the source code
+2. Builds the Docker image
+3. Authenticates with Amazon ECR
+4. Pushes the image to ECR
+5. Deploys the application to Amazon EKS
 
-## Author
+**Why GitHub Actions instead of AWS CodeBuild?** CodeBuild was the original plan, but the AWS account hit a concurrent-build quota limit. A quota increase request (one concurrent Linux/Small build) was not approved because the account had insufficient usage history. GitHub Actions replaced it, with GUVI's approval.
 
-**M. Akshaya**
+## Monitoring – Amazon CloudWatch
 
-GitHub:
+Container Insights ships Kubernetes logs and metrics to CloudWatch Logs via Fluent Bit. The log groups are:
 
-https://github.com/Akshaya33-Devops
+- `/aws/containerinsights/brain-tasks-cluster/application`
+- `/aws/containerinsights/brain-tasks-cluster/dataplane`
+- `/aws/containerinsights/brain-tasks-cluster/host`
 
-Deployment Repository:
-
-https://github.com/Akshaya33-Devops/BRAIN-TASKS-APP-DEPLOYMENT
-
-## Project Information
-
-```text
-Project : BRAIN-TASKS-APP-DEPLOYMENT
-Region  : ap-south-1 (Mumbai)
-Year    : 2026
-Status  : Completed
+```bash
+aws logs describe-log-groups --region ap-south-1 \
+  --query "logGroups[*].logGroupName" --output table
 ```
+
+## Troubleshooting Highlights
+
+| Issue | Fix |
+|---|---|
+| Image not available in ECR | Built and pushed `brain-tasks-app` to ECR, verified digest with the AWS CLI |
+| `kubectl` not connected to EKS | `aws eks update-kubeconfig --region ap-south-1 --name brain-tasks-cluster` |
+| CloudWatch `AccessDeniedException` from Fluent Bit | Created an IAM policy and role, installed the EKS Pod Identity Agent, associated the `cloudwatch-agent` service account with the role, then ran `kubectl rollout restart daemonset/fluent-bit -n amazon-cloudwatch` |
+| Log groups / streams not visible right away | Verified the CloudWatch observability add-on and Fluent Bit config, generated traffic through the load balancer, and waited for ingestion |
+| `kubectl get hpa` returned no resources | Created the HPA with `kubectl autoscale` (2–5 replicas, 70% CPU) |
+| CodeBuild concurrent build quota not approved | Switched CI/CD to GitHub Actions |
+
+## Project Status
+
+- [x] Application source cloned and `dist/` verified
+- [x] Dockerfile created, image built, container tested on `localhost:3000`
+- [x] Image pushed to Amazon ECR
+- [x] EKS cluster provisioned and active
+- [x] Kubernetes Deployment and LoadBalancer Service created, app reachable externally
+- [x] GitHub Actions workflow: GitHub → GitHub Actions → ECR → EKS
+- [x] CloudWatch Container Insights log groups active
+- [x] Horizontal Pod Autoscaler configured (2–5 replicas, 70% CPU)
+
+## Cleanup
+
+To avoid ongoing AWS charges when you are done:
+
+```bash
+kubectl delete -f service.yaml
+kubectl delete -f deployment.yaml
+kubectl delete hpa brain-tasks-app
+# Then delete the EKS cluster/node group and the ECR repository from the AWS Console or CLI
+```
+
+## Acknowledgements
+
+Application source by [Vennilavanguvi](https://github.com/Vennilavanguvi/Brain-Tasks-App). Deployment work completed as part of the GUVI DevOps Engineering program.
